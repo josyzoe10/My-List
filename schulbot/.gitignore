@@ -1,0 +1,9 @@
+# Geheimnisse und persönliche Daten gehören nicht zu GitHub
+.env
+*.db
+*.db-journal
+
+# Technische Hilfsordner
+.venv/
+__pycache__/
+.pytest_cache/
