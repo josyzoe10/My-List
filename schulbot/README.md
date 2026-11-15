@@ -33,9 +33,9 @@ installiere es. Auf Windows im ersten Fenster das Häkchen bei
 
 ### 2. Code herunterladen
 
-Öffne
-<https://github.com/josyzoe10/My-List/archive/refs/heads/claude/personal-school-assistant-bot-w6ow46.zip>,
-entpacke die ZIP-Datei und merk dir, wo der Ordner `schulbot` liegt.
+Falls du den Ordner `schulbot` noch nicht auf deinem Laptop hast: Öffne
+<https://github.com/josyzoe10/My-List/archive/refs/heads/claude/personal-school-assistant-bot-w6ow46.zip>
+und entpacke die ZIP-Datei. Merk dir, wo der Ordner `schulbot` liegt.
 
 ### 3. Bot bei Telegram anlegen
 
