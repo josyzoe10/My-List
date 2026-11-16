@@ -7,3 +7,6 @@
 .venv/
 __pycache__/
 .pytest_cache/
+
+# Sicherung deiner alten Einstellungen nach einem Update
+config_alt.py

@@ -17,6 +17,7 @@ class FalschesTelegram(BaseRequest):
     def __init__(self):
         self.gesendet: list[tuple[str, dict]] = []
         self.blockiert = False  # True = so tun, als hättest du den Bot nie gestartet
+        self.dateiinhalt = b""   # Inhalt der Datei, die der Bot als Nächstes herunterlädt
         self._naechste_id = 100
 
     @property
@@ -30,13 +31,19 @@ class FalschesTelegram(BaseRequest):
         pass
 
     async def do_request(self, url, method, request_data=None, **kwargs):
+        if method == "GET":  # der Bot lädt eine Datei herunter
+            return 200, self.dateiinhalt
         endpunkt = url.rsplit("/", 1)[-1]
         parameter = dict(request_data.parameters) if request_data else {}
+        if endpunkt == "sendDocument":
+            parameter["dateien"] = request_data.multipart_data
         self.gesendet.append((endpunkt, parameter))
 
         if endpunkt == "getMe":
             ergebnis = {"id": 999, "is_bot": True, "first_name": "Testbot", "username": "test_bot"}
-        elif endpunkt in ("sendMessage", "editMessageText"):
+        elif endpunkt == "getFile":
+            ergebnis = {"file_id": "f1", "file_unique_id": "u1", "file_path": "documents/datei.csv"}
+        elif endpunkt in ("sendMessage", "editMessageText", "sendDocument"):
             if self.blockiert:
                 fehler = {"ok": False, "error_code": 403, "description": "Forbidden: bot can't initiate conversation"}
                 return 403, json.dumps(fehler).encode()
@@ -94,6 +101,18 @@ def text_update(bot, text: str, user_id: int = ICH, chat_typ: str = "private") -
     }
     if text.startswith("/"):
         nachricht["entities"] = [{"type": "bot_command", "offset": 0, "length": len(text.split()[0])}]
+    return Update.de_json({"update_id": _nummer(), "message": nachricht}, bot)
+
+
+def datei_update(bot, dateiname: str, user_id: int = ICH) -> Update:
+    """Baut eine Nachricht mit einer angehängten Datei."""
+    nachricht = {
+        "message_id": _nummer(),
+        "date": 0,
+        "chat": {"id": user_id, "type": "private"},
+        "from": _person(user_id),
+        "document": {"file_id": "f1", "file_unique_id": "u1", "file_name": dateiname, "file_size": 500},
+    }
     return Update.de_json({"update_id": _nummer(), "message": nachricht}, bot)
 
 

@@ -1,46 +1,17 @@
 """Tests für den ganzen Bot: Nachricht rein, Antwort raus.
 
 Statt des echten Telegram wird ein Nachbau benutzt (falsches_telegram.py).
-"Jetzt" ist in den Tests Montag, der 16.11.2026 um 10:00 Uhr.
+"Jetzt" ist in den Tests Montag, der 16.11.2026 um 10:00 Uhr (siehe conftest.py).
 """
 
-from datetime import date, datetime, time
+from datetime import date, time
 
 import pytest
 
 import config
-from bot import handler
+from bot import handler, zeitplan
 from bot.datenbank import Datenbank
-from tests.falsches_telegram import FREMD, ICH, FalschesTelegram, knopf_update, text_update
-
-JETZT = datetime(2026, 11, 16, 10, 0, tzinfo=handler.ZONE)
-
-
-@pytest.fixture
-async def bot(tmp_path, monkeypatch):
-    """Ein fertig gestarteter Bot mit leerer Datenbank."""
-    monkeypatch.setattr(handler, "jetzt", lambda: JETZT)
-    telegram = FalschesTelegram()
-    db = Datenbank(str(tmp_path / "test.db"))
-    app = handler.baue_app("123:TEST", ICH, db, request=telegram)
-    await app.initialize()
-
-    class Umgebung:
-        pass
-
-    u = Umgebung()
-    u.app, u.db, u.telegram = app, db, telegram
-
-    async def schreibe(text, user_id=ICH, chat_typ="private"):
-        await app.process_update(text_update(app.bot, text, user_id, chat_typ))
-
-    async def druecke(daten, user_id=ICH):
-        await app.process_update(knopf_update(app.bot, daten, user_id))
-
-    u.schreibe, u.druecke = schreibe, druecke
-    yield u
-    await app.shutdown()
-    db.schliessen()
+from tests.falsches_telegram import FREMD, ICH, FalschesTelegram, text_update
 
 
 async def test_eintrag_hinzufuegen_und_bestaetigung(bot):
@@ -152,7 +123,7 @@ async def test_befehle_heute_morgen_woche_alle(bot):
 
 
 async def test_unbekannter_befehl(bot):
-    await bot.schreibe("/stundenplan")
+    await bot.schreibe("/quatsch")
     assert "kenne ich (noch) nicht" in bot.telegram.letzte()["text"]
     assert bot.db.offene() == []
 
@@ -239,11 +210,11 @@ async def test_morgennachricht_kommt_nur_einmal_pro_tag(bot):
     await bot.schreibe("Vokabeln lernen heute")
     vorher = len(bot.telegram.nachrichten())
 
-    assert await handler.morgennachricht_senden(bot.app) is True
+    assert await zeitplan.morgennachricht_senden(bot.app) is True
     assert bot.telegram.letzte()["text"].startswith("☀️ <b>Guten Morgen!</b> Heute ist Montag, 16.11.")
     assert bot.telegram.letzte()["chat_id"] == ICH
 
-    assert await handler.morgennachricht_senden(bot.app) is False     # zweiter Versuch am selben Tag
+    assert await zeitplan.morgennachricht_senden(bot.app) is False     # zweiter Versuch am selben Tag
     assert len(bot.telegram.nachrichten()) == vorher + 1
 
 
@@ -255,27 +226,31 @@ async def test_morgennachricht_wird_nach_spaetem_start_nachgeholt(bot, monkeypat
 
 @pytest.mark.parametrize("uhrzeit", [time(7, 30), time(12, 0), time(18, 0)])
 async def test_kein_nachholen_vor_8_oder_ab_12_uhr(bot, monkeypatch, uhrzeit):
-    monkeypatch.setattr(handler, "jetzt", lambda: datetime.combine(JETZT.date(), uhrzeit, tzinfo=handler.ZONE))
+    bot.um(uhrzeit.hour, uhrzeit.minute)
     await handler._nach_dem_start(bot.app)
     assert bot.telegram.nachrichten() == []
 
 
 async def test_morgennachricht_wenn_bot_noch_nie_gestartet_wurde(bot):
     bot.telegram.blockiert = True
-    assert await handler.morgennachricht_senden(bot.app) is False     # kein Absturz
+    assert await zeitplan.morgennachricht_senden(bot.app) is False     # kein Absturz
     bot.telegram.blockiert = False
-    assert await handler.morgennachricht_senden(bot.app) is True      # und später klappt es noch
+    assert await zeitplan.morgennachricht_senden(bot.app) is True      # und später klappt es noch
 
 
-async def test_morgennachricht_ist_fuer_8_uhr_berliner_zeit_geplant(bot):
+async def test_der_takt_laeuft_jede_minute(bot):
     [job] = bot.app.job_queue.jobs()
-    trigger = job.job.trigger
-    assert str(trigger.timezone) == "Europe/Berlin"
+    assert job.name == "takt"
+    assert job.job.trigger.interval.total_seconds() == 60
 
-    # Im Winter (UTC+1) und im Sommer (UTC+2) jeweils 8:00 Uhr Ortszeit
-    for tag in (datetime(2026, 11, 16, 0, 0, tzinfo=handler.ZONE), datetime(2027, 7, 1, 0, 0, tzinfo=handler.ZONE)):
-        naechster = trigger.get_next_fire_time(None, tag)
-        assert (naechster.hour, naechster.minute, naechster.date()) == (8, 0, tag.date())
-    # Am Tag der Zeitumstellung (28.3.2027) ebenfalls
-    umstellung = trigger.get_next_fire_time(None, datetime(2027, 3, 28, 0, 0, tzinfo=handler.ZONE))
-    assert umstellung.isoformat() == "2027-03-28T08:00:00+02:00"
+
+async def test_takt_schickt_die_morgennachricht_auch_nach_dem_ruhezustand(bot):
+    bot.um(7, 59)
+    await zeitplan.takt(bot.app)
+    assert bot.telegram.nachrichten() == []
+
+    bot.um(9, 30)                                         # Computer war um 8:00 im Ruhezustand
+    await zeitplan.takt(bot.app)
+    await zeitplan.takt(bot.app)                          # der nächste Takt schickt sie nicht nochmal
+    assert len(bot.telegram.nachrichten()) == 1
+    assert "Guten Morgen" in bot.telegram.letzte()["text"]
