@@ -45,7 +45,8 @@ def main() -> None:
             if ziel.name == "config.py" and ziel.exists():
                 # Deine bisherigen Einstellungen bleiben als Kopie erhalten.
                 (ORDNER / "config_alt.py").write_bytes(ziel.read_bytes())
-                print("Hinweis: config.py wurde erneuert. Deine alte Fassung liegt in config_alt.py.")
+                print("Hinweis: config.py wurde erneuert. Falls du dort selbst etwas geändert hattest,")
+                print("         findest du deine alte Fassung in config_alt.py.")
             ziel.parent.mkdir(parents=True, exist_ok=True)
             ziel.write_bytes(neu)
             geaendert += 1
